@@ -47,16 +47,17 @@ nav button.on{color:var(--brand);font-weight:800}
 <body>
 <main id="app"></main>
 <nav id="nav"></nav>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script>
 const KEY='budget-v1';
 const CATS={'Entrées':['Salaire','Prime d’activité','Remboursement','Autre entrée'],'Factures':['Loyer','Engie','Assurance','Impôts'],'Abonnements':['Internet','Mobile','Banque','Spotify','Crunchyroll','Serato','Serum','Soundcloud','Splice'],'Dépenses':['Courses','Tabac','Coiffeur','Santé','Cadeaux'],'Plaisirs':['Sorties','Transports','Vinyles','Boissons','Voyages','Divers']};
 const REC0=[['Salaire','Entrées'],['Prime d’activité','Entrées'],['Loyer','Factures'],['Engie','Factures'],['Assurance','Factures'],['Internet','Abonnements'],['Mobile','Abonnements'],['Banque','Abonnements'],['Spotify','Abonnements'],['Crunchyroll','Abonnements'],['Serato','Abonnements'],['Serum','Abonnements'],['Soundcloud','Abonnements'],['Splice','Abonnements']];
-let S=load(),page='home',month=null,delId=null,delM=null,toast='',pend='',impOk=false,bkText='';
+let S={v:2,cats:[],ops:[],months:[],ov:{},rec:[]},page='home',month=null,delId=null,delM=null,toast='',pend='',impOk=false,bkText='';
 const ORD=['Entrées','Factures','Abonnements','Dépenses','Plaisirs'];
 function allCats(){const c={};Object.keys(CATS).forEach(b=>c[b]=[...CATS[b]]);S.cats.forEach(x=>{if(c[x.block]&&!c[x.block].includes(x.name))c[x.block].push(x.name)});return c}
 function load(){try{const r=JSON.parse(localStorage.getItem(KEY));if(r&&r.ops){if(!r.cats)r.cats=[];if(!r.v){r.ops.forEach(o=>{if(o.rec&&o.status==='prevue')o.status='saisie'});r.v=2}return r}}catch(e){}
 return{v:2,cats:[],ops:[],months:[],ov:{},rec:REC0.map((r,i)=>({id:i+1,label:r[0],block:r[1],amount:0}))}}
-function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function save(){syncSave()}
 const $=s=>document.querySelector(s);
 const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const eur=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n);
@@ -112,6 +113,8 @@ function monthView(m,full){
   return h;
 }
 function render(){
+  if(!user)return renderAuth();
+  $('#nav').style.display='';
   let h='';
   if(page==='home'){
     const cur=today().slice(0,7);
@@ -130,10 +133,10 @@ function render(){
   }else{
     h=`<h1>Montants à reporter chaque mois</h1><div class="sub">Copiés dans chaque nouveau mois. Les modifier ne change pas les mois déjà créés.</div><div class="card" style="margin-top:12px">${S.rec.map(r=>`<div class="row"><div class="grow"><input data-rec="${r.id}" data-f="label" value="${esc(r.label)}" aria-label="Libellé"></div><div style="width:96px"><input data-rec="${r.id}" data-f="amount" type="number" step="0.01" inputmode="decimal" value="${r.amount}" aria-label="Montant"></div><button class="link" data-act="rdel" data-id="${r.id}" aria-label="Supprimer">×</button></div>`).join('')}</div>
     <h2>Ajouter un montant</h2><input id="rl" placeholder="Libellé"><div class="inl" style="margin-top:8px"><input id="ra" type="number" step="0.01" inputmode="decimal" placeholder="Montant"><select id="rb"><option>Entrées</option><option>Factures</option><option selected>Abonnements</option></select></div><button class="btn" data-act="radd">Ajouter</button>
-    <h2 style="margin-top:28px">Sauvegarde</h2><div class="sub">Copie ta sauvegarde, puis colle-la dans la zone ci-dessous sur l’autre appareil (appui long, puis « Coller ») et appuie sur Importer.</div><div class="inl" style="margin-top:10px"><button class="link" data-act="cpy">Copier la sauvegarde</button><button class="link" data-act="exp">Exporter en fichier</button><button class="link" data-act="imp">${impOk?'Confirmer le remplacement':'Importer le texte ci-dessous'}</button></div><textarea id="bk" rows="5" style="width:100%;margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--card);font:12px monospace" placeholder="Colle ici la sauvegarde à restaurer">${esc(bkText)}</textarea>`;
+    <h2 style="margin-top:28px">Compte</h2><div class="sub">${esc(user.email||'')}</div><button class="link" data-act="out">Se déconnecter</button><h2 style="margin-top:28px">Sauvegarde</h2><div class="sub">Copie ta sauvegarde, puis colle-la dans la zone ci-dessous sur l’autre appareil (appui long, puis « Coller ») et appuie sur Importer.</div><div class="inl" style="margin-top:10px"><button class="link" data-act="cpy">Copier la sauvegarde</button><button class="link" data-act="exp">Exporter en fichier</button><button class="link" data-act="imp">${impOk?'Confirmer le remplacement':'Importer le texte ci-dessous'}</button></div><textarea id="bk" rows="5" style="width:100%;margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--card);font:12px monospace" placeholder="Colle ici la sauvegarde à restaurer">${esc(bkText)}</textarea>`;
   }
   if(toast)h+=`<div class="sub" style="margin-top:14px" role="status">${toast}</div>`;
-  $('#app').innerHTML=h;
+  h+=`<div class="sub" id="sync" style="margin-top:18px">${syncMsg}</div>`;$('#app').innerHTML=h;
   const tabs=[['home','Accueil'],['add','Ajouter'],['months','Mois'],['rec','Reports']];
   $('#nav').innerHTML=tabs.map(t=>`<button class="${page===t[0]?'on':''}" data-go="${t[0]}">${t[1]}</button>`).join('');
   const p=$('#p');if(p)p.onchange=drawDates;
@@ -179,6 +182,7 @@ document.addEventListener('click',e=>{
   const t=e.target.closest('[data-act]');if(!t)return;
   const act=t.dataset.act,id=+t.dataset.id,m=t.dataset.m;
   if(act==='cpy')return copyData();
+  if(authAct(act))return;
   if(act==='exp')return exportData();
   if(act==='imp')return importData();
   if(act==='save')return saveOp();
@@ -200,7 +204,70 @@ document.addEventListener('change',e=>{
   const i=e.target.dataset&&e.target.dataset.rec;if(!i)return;
   const r=S.rec.find(x=>x.id==i);r[e.target.dataset.f]=e.target.dataset.f==='amount'?(parseFloat(e.target.value)||0):e.target.value;save();
 });
-ensureMonths();render();
+
+const SITE='https://mxss6.github.io/Budget/',SB_URL='https://xyixerogampxdezdpyen.supabase.co',SB_KEY='sb_publishable_4sSBNaEZEMNViHTf87fhuA_fsY-BwLe';
+const sb=window.supabase?supabase.createClient(SB_URL,SB_KEY):null;
+let user=null,authMsg='',mode='login',emVal='',legacy=null,askLeg=false,syncMsg='',pending=false,lastRemote=null,tmr=null;
+const ckey=()=>KEY+'-'+user.id;
+function fresh(){return{v:2,cats:[],ops:[],months:[],ov:{},rec:REC0.map((r,i)=>({id:i+1,label:r[0],block:r[1],amount:0}))}}
+function norm(r){if(!r||!Array.isArray(r.ops))return fresh();if(!r.cats)r.cats=[];if(!r.ov)r.ov={};if(!r.months)r.months=[];if(!r.rec)r.rec=[];return r}
+function cache(){try{localStorage.setItem(ckey(),JSON.stringify(S))}catch(e){}}
+function syncSave(){if(!user)return;cache();pending=true;syncMsg='Enregistrement…';clearTimeout(tmr);tmr=setTimeout(push,700)}
+async function push(){
+  try{const r=await sb.from('budgets').upsert({user_id:user.id,data:S,updated_at:new Date().toISOString()}).select('updated_at').single();
+    if(r.error)throw r.error;lastRemote=r.data.updated_at;pending=false;syncMsg='Synchronisé'}
+  catch(e){syncMsg='Non synchronisé : réessai à la prochaine ouverture'}
+  const el=$('#sync');if(el)el.textContent=syncMsg;
+}
+async function pull(){
+  if(!user||pending)return;
+  try{const r=await sb.from('budgets').select('data,updated_at').eq('user_id',user.id).maybeSingle();
+    if(r.data&&r.data.updated_at!==lastRemote){S=norm(r.data.data);lastRemote=r.data.updated_at;cache();render()}}catch(e){}
+}
+async function start(u){
+  user=u;let row=null,err=null;
+  try{const r=await sb.from('budgets').select('data,updated_at').eq('user_id',u.id).maybeSingle();row=r.data;err=r.error}catch(e){err=e}
+  if(err){let c=null;try{c=JSON.parse(localStorage.getItem(ckey()))}catch(e){}
+    S=c?norm(c):fresh();syncMsg='Hors ligne : données de cet appareil';ensureMonths();return render()}
+  if(row){S=norm(row.data);lastRemote=row.updated_at;syncMsg='Synchronisé'}
+  else{S=fresh();syncMsg='Compte vide';const L=load();if(L.ops.length){legacy=L;askLeg=true;return renderAuth()}}
+  ensureMonths();cache();render();
+}
+function renderAuth(){
+  $('#nav').style.display='none';
+  if(!sb){$('#app').innerHTML='<h1>Connexion impossible</h1><div class="empty">Le module de connexion n’a pas pu se charger. Vérifie ta connexion internet et recharge la page.</div>';return}
+  if(askLeg){$('#app').innerHTML='<h1>Données trouvées sur cet appareil</h1><div class="sub">Les envoyer sur ton compte ?</div><button class="btn" data-act="legY">Oui, les envoyer</button><button class="btn" style="background:var(--mute)" data-act="legN">Non, commencer à vide</button>';return}
+  const rec=mode==='recovery',su=mode==='signup';
+  $('#app').innerHTML=`<h1>Budget</h1><p class="big" style="font-size:30px">${rec?'Nouveau mot de passe':su?'Créer un compte':'Connexion'}</p>${rec?'':`<label for="em">E-mail</label><input id="em" type="email" autocomplete="email" value="${esc(emVal)}">`}<label for="pw">${rec?'Nouveau mot de passe':'Mot de passe'} (8 caractères minimum)</label><input id="pw" type="password" autocomplete="${mode==='login'?'current-password':'new-password'}"><button class="btn" data-act="${rec?'newpw':su?'signup':'login'}">${rec?'Enregistrer':su?'Créer mon compte':'Se connecter'}</button>${rec?'':`<div class="inl" style="margin-top:12px"><button class="link" data-act="${su?'tologin':'tosignup'}">${su?'J’ai déjà un compte':'Créer un compte'}</button><button class="link" data-act="forgot">Mot de passe oublié</button></div>`}<div class="sub" style="margin-top:12px" role="status">${esc(authMsg)}</div>`;
+}
+function authAct(a){
+  if(!['login','signup','forgot','newpw','tologin','tosignup','legY','legN','out'].includes(a))return false;
+  emVal=((($('#em')||{}).value)||emVal).trim();const pw=($('#pw')||{}).value||'';
+  const bad=m=>{authMsg=m;renderAuth()};
+  if(a==='tologin'||a==='tosignup'){mode=a==='tologin'?'login':'signup';authMsg='';renderAuth();return true}
+  if(a==='out'){sb.auth.signOut();return true}
+  if(a==='legY'||a==='legN'){S=a==='legY'?legacy:fresh();askLeg=false;legacy=null;ensureMonths();save();render();return true}
+  if(a==='forgot'){if(!emVal){bad('Saisis ton e-mail d’abord.');return true}
+    sb.auth.resetPasswordForEmail(emVal,{redirectTo:SITE}).then(r=>bad(r.error?'Erreur : '+r.error.message:'E-mail envoyé : suis le lien pour choisir un nouveau mot de passe.'));return true}
+  if(a!=='newpw'&&!emVal){bad('Saisis ton e-mail.');return true}
+  if(pw.length<8){bad('Le mot de passe doit faire au moins 8 caractères.');return true}
+  authMsg='Un instant…';renderAuth();
+  if(a==='login')sb.auth.signInWithPassword({email:emVal,password:pw}).then(r=>{if(r.error)bad('Connexion impossible : '+r.error.message)});
+  if(a==='signup')sb.auth.signUp({email:emVal,password:pw,options:{emailRedirectTo:SITE}}).then(r=>bad(r.error?'Erreur : '+r.error.message:(r.data.session?'':'Compte créé. Vérifie ta boîte mail pour confirmer, puis connecte-toi.')));
+  if(a==='newpw')sb.auth.updateUser({password:pw}).then(r=>{if(r.error)bad('Erreur : '+r.error.message);else{mode='login';authMsg='';start(r.data.user)}});
+  return true;
+}
+function init(){
+  if(!sb)return renderAuth();
+  sb.auth.onAuthStateChange((ev,s)=>{
+    if(ev==='PASSWORD_RECOVERY'){mode='recovery';user=null;return renderAuth()}
+    if(ev==='SIGNED_OUT'){user=null;S=fresh();mode='login';authMsg='';return renderAuth()}
+    if((ev==='SIGNED_IN'||ev==='INITIAL_SESSION')&&s&&s.user&&mode!=='recovery'&&(!user||user.id!==s.user.id))setTimeout(()=>start(s.user),0);
+  });
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&user)pending?push():pull()});
+  renderAuth();
+}
+init();
 </script>
 </body>
 </html>
