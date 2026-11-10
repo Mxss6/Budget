@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Budget</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;800&display=swap">
+<style>
+:root{--bg:#eef1f4;--card:#fff;--ink:#14213d;--mute:#6b7689;--line:#dde2ea;--brand:#2a4bd7;--jaune:#e0a100;--rouge:#d1242f;--noir:#111;
+box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0f1420;--card:#18202f;--ink:#eef1f7;--mute:#98a3b8;--line:#2a3447;--brand:#7f9bff;--jaune:#f0b429;--rouge:#ff6b6b;--noir:#eef1f7;color-scheme:dark}}
+:root[data-theme="dark"]{--bg:#0f1420;--card:#18202f;--ink:#eef1f7;--mute:#98a3b8;--line:#2a3447;--brand:#7f9bff;--jaune:#f0b429;--rouge:#ff6b6b;--noir:#eef1f7;color-scheme:dark}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--ink);font:16px/1.4 Manrope,system-ui,sans-serif;font-variant-numeric:tabular-nums}
+main{max-width:520px;margin:0 auto;padding:18px 16px 110px}
+h1{font-size:15px;font-weight:600;color:var(--mute);margin:0 0 4px}
+h2{font-size:15px;margin:22px 0 8px}
+.big{font-size:44px;font-weight:800;letter-spacing:-1px;margin:0}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:6px 14px}
+.row{display:flex;align-items:center;gap:10px;padding:11px 0;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.grow{flex:1;min-width:0}
+.sub{color:var(--mute);font-size:13px}
+.dot{width:22px;height:22px;border-radius:50%;border:0;flex:none;cursor:pointer}
+.dot.prevue{background:var(--jaune)}.dot.saisie{background:var(--noir)}.dot.pointee{background:var(--rouge)}
+input.amt{width:104px;padding:8px;text-align:right;background:var(--card)}
+.amt.prevue{color:var(--jaune)}.amt.saisie{color:var(--noir)}.amt.pointee{color:var(--rouge)}
+.amt{font-weight:600;white-space:nowrap}
+button,input,select{font:inherit;color:inherit}
+input,select{width:100%;padding:12px;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+label{display:block;font-size:13px;color:var(--mute);margin:14px 0 5px}
+.btn{background:var(--brand);color:#fff;border:0;border-radius:12px;padding:14px;width:100%;font-weight:600;margin-top:18px;cursor:pointer}
+.link{background:none;border:0;color:var(--brand);padding:4px;cursor:pointer;font-size:14px}
+.tag{font-size:12px;background:var(--line);border-radius:6px;padding:2px 6px;margin-left:6px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:12px}
+.grid div{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+nav{position:fixed;left:0;right:0;bottom:0;display:flex;background:var(--card);border-top:1px solid var(--line);padding:6px 6px calc(6px + env(safe-area-inset-bottom,0px))}
+nav button{flex:1;background:none;border:0;padding:8px 2px;color:var(--mute);font-size:13px;cursor:pointer}
+nav button.on{color:var(--brand);font-weight:800}
+.empty{color:var(--mute);padding:14px 0;font-size:14px}
+.chk{display:flex;gap:10px;align-items:center;margin-top:16px}.chk input{width:auto}
+.inl{display:flex;gap:8px}
+:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<nav id="nav"></nav>
+<script>
+const KEY='budget-v1';
+const CATS={'Entrées':['Salaire','Prime d’activité','Remboursement','Autre entrée'],'Factures':['Loyer','Engie','Assurance','Impôts'],'Abonnements':['Internet','Mobile','Banque','Spotify','Crunchyroll','Serato','Serum','Soundcloud','Splice'],'Dépenses':['Courses','Tabac','Coiffeur','Santé','Cadeaux'],'Plaisirs':['Sorties','Transports','Vinyles','Boissons','Voyages','Divers']};
+const REC0=[['Salaire','Entrées'],['Prime d’activité','Entrées'],['Loyer','Factures'],['Engie','Factures'],['Assurance','Factures'],['Internet','Abonnements'],['Mobile','Abonnements'],['Banque','Abonnements'],['Spotify','Abonnements'],['Crunchyroll','Abonnements'],['Serato','Abonnements'],['Serum','Abonnements'],['Soundcloud','Abonnements'],['Splice','Abonnements']];
+let S=load(),page='home',month=null,delId=null,delM=null,toast='',pend='',impOk=false,bkText='';
+const ORD=['Entrées','Factures','Abonnements','Dépenses','Plaisirs'];
+function allCats(){const c={};Object.keys(CATS).forEach(b=>c[b]=[...CATS[b]]);S.cats.forEach(x=>{if(c[x.block]&&!c[x.block].includes(x.name))c[x.block].push(x.name)});return c}
+function load(){try{const r=JSON.parse(localStorage.getItem(KEY));if(r&&r.ops){if(!r.cats)r.cats=[];if(!r.v){r.ops.forEach(o=>{if(o.rec&&o.status==='prevue')o.status='saisie'});r.v=2}return r}}catch(e){}
+return{v:2,cats:[],ops:[],months:[],ov:{},rec:REC0.map((r,i)=>({id:i+1,label:r[0],block:r[1],amount:0}))}}
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+const $=s=>document.querySelector(s);
+const esc=t=>String(t).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const eur=n=>new Intl.NumberFormat('fr-FR',{style:'currency',currency:'EUR'}).format(n);
+const today=()=>new Date().toISOString().slice(0,10);
+const mAdd=(m,n)=>{let[y,k]=m.split('-').map(Number);k+=n-1;return(y+Math.floor(k/12))+'-'+String(k%12+1).padStart(2,'0')};
+const mName=m=>{const s=new Date(m+'-15').toLocaleDateString('fr-FR',{month:'long',year:'numeric'});return s[0].toUpperCase()+s.slice(1)};
+const dFmt=d=>new Date(d+'T12:00').toLocaleDateString('fr-FR',{day:'numeric',month:'short'});
+const sign=b=>b==='Entrées'?1:-1;
+let uid=Date.now();
+function ensureMonths(){
+  const have=new Set([...S.months,...S.ops.map(o=>o.date.slice(0,7))]);
+  if(!have.size)return;
+  const all=[...have].sort();let m=all[0];const last=all[all.length-1];
+  while(m<=last){
+    if(!S.months.includes(m)){
+      S.months.push(m);
+      if(!S.ops.some(o=>o.date.startsWith(m)&&o.rec)){
+        S.rec.forEach(r=>S.ops.push({id:uid++,date:m+'-01',amount:r.amount,cat:r.label,block:r.block,label:'',status:'saisie',rec:1}));
+      }
+    }
+    m=mAdd(m,1);
+  }
+  S.months.sort();save();
+}
+function calc(m){
+  const t={'Entrées':0,'Factures':0,'Abonnements':0,'Dépenses':0,'Plaisirs':0};
+  S.ops.filter(o=>o.date.startsWith(m)).forEach(o=>t[o.block]+=o.amount);
+  const prev=S.months.includes(mAdd(m,-1))?calc(mAdd(m,-1)).total:0;
+  const start=S.ov[m]!=null?S.ov[m]:prev;
+  const total=start+t['Entrées']-t['Factures']-t['Abonnements']-t['Dépenses']-t['Plaisirs'];
+  return{t,prev,start,total,corr:S.ov[m]!=null};
+}
+function opRow(o,ed){
+  const s=o.status;
+  return`<div class="row"><button class="dot ${s}" data-act="cyc" data-id="${o.id}" aria-label="Changer le statut"></button>
+  <div class="grow"><div>${esc(o.label||o.cat)}${o.last?'<span class="tag">Dernier</span>':''}</div><div class="sub">${esc(o.cat)}${ed?'':' · '+o.block} · ${dFmt(o.date)}</div></div>
+  ${ed?`<input class="amt ${s}" type="number" step="0.01" inputmode="decimal" value="${o.amount}" data-op="${o.id}" aria-label="Montant">`:`<div class="amt ${s}">${o.block==='Entrées'?'+':'−'}${eur(o.amount)}</div>`}
+  <button class="link" data-act="del" data-id="${o.id}">${delId===o.id?'Sûr ?':'×'}</button></div>`;
+}
+function list(ops,msg,ed){return ops.length?`<div class="card">${ops.map(o=>opRow(o,ed)).join('')}</div>`:`<div class="empty">${msg}</div>`}
+function monthView(m,full){
+  const c=calc(m),ops=S.ops.filter(o=>o.date.startsWith(m)).sort((a,b)=>a.date<b.date?-1:1);
+  const pt=ops.filter(o=>o.status==='saisie'),av=ops.filter(o=>o.status==='prevue');
+  let h=`<h1>${mName(m)}</h1><p class="big">${eur(c.total)}</p><div class="sub">Total prévisionnel · départ ${eur(c.start)}${c.corr?'<span class="tag">corrigé</span>':''}</div>`;
+  if(c.corr)h+=`<div class="sub">Calculé : ${eur(c.prev)} <button class="link" data-act="unfix" data-m="${m}">Revenir au calcul</button></div>`;
+  h+=`<div class="inl" style="margin-top:10px"><input id="fix" type="number" step="0.01" inputmode="decimal" placeholder="Corriger le solde de départ"><button class="link" data-act="fix" data-m="${m}">Enregistrer</button></div>`;
+  if(full){
+    h+=`<div class="grid"><div><div class="sub">Entrées</div>${eur(c.t['Entrées'])}</div><div><div class="sub">Factures</div>${eur(c.t['Factures']+c.t['Abonnements'])}</div><div><div class="sub">Dépenses</div>${eur(c.t['Dépenses'])}</div><div><div class="sub">Plaisirs</div>${eur(c.t['Plaisirs'])}</div></div>
+    <h2>Toutes les opérations</h2>${ORD.map(b=>{const g=ops.filter(o=>o.block===b).sort((x,y)=>x.date<y.date?-1:x.date>y.date?1:0);return g.length?`<h2 style="font-size:14px;color:var(--mute)">${b}</h2>${list(g,'',1)}`:''}).join('')||list([],'Aucune opération.')}${m>today().slice(0,7)?`<button class="link" data-act="delm" data-m="${m}" style="color:var(--rouge);margin-top:18px">${delM===m?'Confirmer la suppression':(S.months.filter(x=>x>m).length?'Supprimer ce mois et les suivants':'Supprimer ce mois')}</button>`:''}`;
+  }else{
+    h+=`<h2>Reste à pointer</h2>${list(pt,'Rien à pointer.')}<h2>Reste à venir</h2>${list(av,'Rien de prévu.')}`;
+  }
+  return h;
+}
+function render(){
+  let h='';
+  if(page==='home'){
+    const cur=today().slice(0,7);
+    h=S.months.includes(cur)?monthView(cur,false):`<h1>${mName(cur)}</h1><p class="big">—</p><div class="empty">Ce mois n’existe pas encore. Ajoutez une première opération pour le créer.</div>`;
+  }else if(page==='add'){
+    const AC=allCats();h=`<h1>Nouvelle opération</h1><label for="a">Montant (€)</label><input id="a" type="number" step="0.01" inputmode="decimal" placeholder="0,00">
+    <label for="c">Catégorie</label><select id="c">${Object.entries(AC).map(([b,l])=>`<optgroup label="${b}">${l.map(x=>`<option value="${b}|${x}"${b+'|'+x===pend?' selected':''}>${x}</option>`).join('')}</optgroup>`).join('')}</select>
+    <label for="d">Date</label><input id="d" type="date" value="${today()}">
+    <label for="l">Libellé (facultatif)</label><input id="l" placeholder="Ex. Thunderdome">
+    <div class="chk"><input id="f" type="checkbox"><label for="f" style="margin:0;color:var(--ink)">Prévision ? <span class="sub">(estimation, en jaune)</span></label></div><div class="chk"><input id="p" type="checkbox"><label for="p" style="margin:0;color:var(--ink)">Plusieurs paiements ?</label></div>
+    <div id="multi" hidden><label for="n">Nombre d’échéances</label><input id="n" type="number" min="2" max="12" value="4"><div id="dates"></div></div>
+    <button class="btn" data-act="save">Ajouter</button><details class="card" style="margin-top:22px"><summary style="padding:8px 0;cursor:pointer;color:var(--brand)">Nouvelle catégorie</summary><label for="nc">Nom</label><input id="nc" placeholder="Ex. Proton"><label for="nb">Type</label><select id="nb">${Object.keys(AC).map(b=>`<option>${b}</option>`).join('')}</select><button class="btn" data-act="cat" style="margin:12px 0">Créer la catégorie</button></details>`;
+  }else if(page==='months'){
+    h=month?`<button class="link" data-act="back">← Tous les mois</button>${monthView(month,true)}`
+    :`<h1>Tous les mois</h1>`+(S.months.length?`<div class="card">${S.months.map(m=>{const c=calc(m);return`<div class="row" data-act="open" data-m="${m}" style="cursor:pointer"><div class="grow">${mName(m)}${c.corr?'<span class="tag">corrigé</span>':''}<div class="sub">Départ ${eur(c.start)}</div></div><div class="amt">${eur(c.total)}</div></div>`}).join('')}</div>`:'<div class="empty">Aucun mois pour l’instant.</div>');
+  }else{
+    h=`<h1>Montants à reporter chaque mois</h1><div class="sub">Copiés dans chaque nouveau mois. Les modifier ne change pas les mois déjà créés.</div><div class="card" style="margin-top:12px">${S.rec.map(r=>`<div class="row"><div class="grow"><input data-rec="${r.id}" data-f="label" value="${esc(r.label)}" aria-label="Libellé"></div><div style="width:96px"><input data-rec="${r.id}" data-f="amount" type="number" step="0.01" inputmode="decimal" value="${r.amount}" aria-label="Montant"></div><button class="link" data-act="rdel" data-id="${r.id}" aria-label="Supprimer">×</button></div>`).join('')}</div>
+    <h2>Ajouter un montant</h2><input id="rl" placeholder="Libellé"><div class="inl" style="margin-top:8px"><input id="ra" type="number" step="0.01" inputmode="decimal" placeholder="Montant"><select id="rb"><option>Entrées</option><option>Factures</option><option selected>Abonnements</option></select></div><button class="btn" data-act="radd">Ajouter</button>
+    <h2 style="margin-top:28px">Sauvegarde</h2><div class="sub">Copie ta sauvegarde, puis colle-la dans la zone ci-dessous sur l’autre appareil (appui long, puis « Coller ») et appuie sur Importer.</div><div class="inl" style="margin-top:10px"><button class="link" data-act="cpy">Copier la sauvegarde</button><button class="link" data-act="exp">Exporter en fichier</button><button class="link" data-act="imp">${impOk?'Confirmer le remplacement':'Importer le texte ci-dessous'}</button></div><textarea id="bk" rows="5" style="width:100%;margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--card);font:12px monospace" placeholder="Colle ici la sauvegarde à restaurer">${esc(bkText)}</textarea>`;
+  }
+  if(toast)h+=`<div class="sub" style="margin-top:14px" role="status">${toast}</div>`;
+  $('#app').innerHTML=h;
+  const tabs=[['home','Accueil'],['add','Ajouter'],['months','Mois'],['rec','Reports']];
+  $('#nav').innerHTML=tabs.map(t=>`<button class="${page===t[0]?'on':''}" data-go="${t[0]}">${t[1]}</button>`).join('');
+  const p=$('#p');if(p)p.onchange=drawDates;
+  const n=$('#n');if(n)n.oninput=drawDates;
+}
+function copyData(){
+  const d=JSON.stringify(S);
+  const fb=()=>{bkText=d;toast='Le texte est dans la zone ci-dessous : appuie longuement dessus, puis « Tout sélectionner » et « Copier ».';render();const t=$('#bk');if(t){t.focus();t.select()}};
+  try{navigator.clipboard.writeText(d).then(()=>{toast='Sauvegarde copiée. Colle-la dans la zone ci-dessous sur l’autre appareil, puis appuie sur Importer.';render()}).catch(fb)}catch(e){fb()}
+}
+function exportData(){
+  const d=JSON.stringify(S,null,1);
+  const fb=m=>{bkText=d;toast=m;render()};
+  const p=(window.claude&&claude.use)?claude.use('downloads'):Promise.resolve(null);
+  p.then(dl=>{if(!dl)return fb('Copie le texte ci-dessous pour sauvegarder.');
+    return dl.save({filename:'budget-sauvegarde-'+today()+'.json',data:d}).then(()=>{toast='Sauvegarde exportée.';render()}).catch(er=>{if(er&&er.code==='declined')return;fb('Export direct impossible : copie le texte ci-dessous.')})
+  }).catch(()=>fb('Copie le texte ci-dessous pour sauvegarder.'));
+}
+function importData(){
+  const el=$('#bk'),txt=el?el.value:bkText;let r;
+  try{r=JSON.parse(txt)}catch(er){toast='Ce texte n’est pas une sauvegarde valide.';return render()}
+  if(!r||!Array.isArray(r.ops)||!Array.isArray(r.months)||!Array.isArray(r.rec)){toast='Ce texte n’est pas une sauvegarde valide.';return render()}
+  if(!impOk){impOk=true;bkText=txt;toast='Attention : cela remplacera toutes tes données actuelles. Appuie à nouveau pour confirmer.';return render()}
+  r.cats=r.cats||[];r.ov=r.ov||{};r.v=2;S=r;impOk=false;bkText='';toast='Sauvegarde restaurée.';save();render();
+}
+function drawDates(){
+  const on=$('#p').checked;$('#multi').hidden=!on;if(!on)return;
+  const n=Math.max(2,Math.min(12,+$('#n').value||2)),d0=$('#d').value||today();
+  $('#dates').innerHTML=Array.from({length:n},(_,i)=>{
+    const dt=new Date(d0+'T12:00');dt.setMonth(dt.getMonth()+i);
+    return`<label>Échéance ${i+1}</label><input type="date" class="pd" value="${dt.toISOString().slice(0,10)}">`}).join('');
+}
+function saveOp(){
+  const a=parseFloat($('#a').value);if(!(a>0)){toast='Saisissez un montant supérieur à 0.';return render()}
+  const[b,c]=$('#c').value.split('|'),lab=$('#l').value.trim();
+  let dates=[$('#d').value||today()];
+  if($('#p').checked){const ds=[...document.querySelectorAll('.pd')].map(i=>i.value).filter(Boolean);if(ds.length>1)dates=ds}
+  dates.forEach((d,i)=>S.ops.push({id:uid++,date:d,amount:a,cat:c,block:b,label:lab,status:$('#f').checked?'prevue':'saisie',last:dates.length>1&&i===dates.length-1}));
+  ensureMonths();save();toast='Opération ajoutée.';page='home';render();toast='';
+}
+document.addEventListener('click',e=>{
+  const g=e.target.closest('[data-go]');if(g){page=g.dataset.go;month=null;toast='';pend='';impOk=false;return render()}
+  const t=e.target.closest('[data-act]');if(!t)return;
+  const act=t.dataset.act,id=+t.dataset.id,m=t.dataset.m;
+  if(act==='cpy')return copyData();
+  if(act==='exp')return exportData();
+  if(act==='imp')return importData();
+  if(act==='save')return saveOp();
+  if(act==='cat'){const n=$('#nc').value.trim();if(!n)return;S.cats.push({name:n,block:$('#nb').value});pend=$('#nb').value+'|'+n;toast='Catégorie créée et sélectionnée.';save();return render()}
+  if(act==='cyc'){const o=S.ops.find(x=>x.id===id);o.status={prevue:'saisie',saisie:'pointee',pointee:'prevue'}[o.status]}
+  if(act==='del'){if(delId===id){S.ops=S.ops.filter(x=>x.id!==id);delId=null}else{delId=id;return render()}}
+  if(act==='fix'){const v=parseFloat($('#fix').value);if(!isNaN(v))S.ov[m]=v}
+  if(act==='unfix')delete S.ov[m];
+  if(act==='open')month=m;
+  if(act==='back')month=null;
+  if(act==='delm'){if(delM===m){S.ops=S.ops.filter(o=>o.date.slice(0,7)<m);S.months=S.months.filter(x=>x<m);Object.keys(S.ov).forEach(k=>{if(k>=m)delete S.ov[k]});delM=null;month=null}else{delM=m;return render()}}
+  if(act==='rdel')S.rec=S.rec.filter(x=>x.id!==id);
+  if(act==='radd'){const l=$('#rl').value.trim();if(l)S.rec.push({id:uid++,label:l,amount:parseFloat($('#ra').value)||0,block:$('#rb').value})}
+  save();render();
+});
+document.addEventListener('change',e=>{
+  if(e.target.id==='bf'){const f=e.target.files[0];if(f){const rd=new FileReader();rd.onload=()=>{bkText=String(rd.result);toast='Fichier chargé : appuie sur Importer.';render()};rd.readAsText(f)}return}
+  const q=e.target.dataset&&e.target.dataset.op;if(q){const o=S.ops.find(x=>x.id==q);o.amount=parseFloat(e.target.value)||0;save();return render()}
+  const i=e.target.dataset&&e.target.dataset.rec;if(!i)return;
+  const r=S.rec.find(x=>x.id==i);r[e.target.dataset.f]=e.target.dataset.f==='amount'?(parseFloat(e.target.value)||0):e.target.value;save();
+});
+ensureMonths();render();
+</script>
+</body>
+</html>
